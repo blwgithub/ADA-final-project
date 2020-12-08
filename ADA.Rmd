@@ -1,0 +1,197 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+### Import Data
+```{r}
+SHS <- read.csv("D:/University study/WUSTL/ADA/final_SHS/SHS.csv")
+cao <- read.csv("D:/University study/WUSTL/ADA/final_SHS/cao.csv")
+```
+
+
+### Data Cleaning and Data Management
+```{r}
+pacman::p_load(tidyverse, ROCR, odds.n.ends, blorr, lmtest, car) 
+
+muda <- SHS
+
+#match up the observations in muda and cao using ID
+muda2 <- SHS[SHS$ID %in% cao$ID,] %>%
+  select(-ID)
+
+#merge two dataset
+muda <- cbind(muda2, cao)
+
+#rename RIDAGEYR as age
+muda$age <- muda$RIDAGEYR
+
+#keep observations with age 20 or older, then select variables that we need for data analysis
+muda <- filter(muda, age >= 20) %>%
+  select(ID, RIAGENDR, RIDRETH3, RIDAGEYR, DMDEDUC2, DMDMARTL, INDFMIN2, DMDHHSIZ, INDFMPIR, SMQ020, age, TotalSHSexposure)
+
+#categorize age
+muda$age <- case_when(
+  muda$age < 35 ~ "young",
+  muda$age > 35& muda$age < 60 ~ "middle",
+  TRUE ~ "old"
+)
+
+#redefine and categorize education level
+muda$household_number <- muda$DMDHHSIZ
+muda$family_income <- muda$INDFMPIR
+muda$education <- ifelse(muda$DMDEDUC2 == 1|muda$DMDEDUC2 ==2| muda$DMDEDUC2 == 3, "high school or lower",
+                          ifelse(muda$DMDEDUC2 == 4, "college level",
+                                 ifelse(muda$DMDEDUC2 == 5, "graduate level", "don't know")))
+
+#recode gender
+muda$gender <- case_when(
+  muda$RIAGENDR == 1 ~ "male",
+  TRUE ~ "female"
+)
+
+#redefine marital situation
+muda$marriage <- case_when(
+  muda$DMDMARTL == 1|muda$DMDMARTL == 6 ~ "not single dog",
+  TRUE ~ "single dog"
+)
+
+#recode race
+muda$race <- case_when(
+  muda$RIDRETH3 == 1 ~ "Mexican American",
+  muda$RIDRETH3 == 2 ~ "other Hispanic",
+  muda$RIDRETH3 == 3 ~ "white",
+  muda$RIDRETH3 == 4 ~ "black",
+  muda$RIDRETH3 == 6 ~ "asian",
+  TRUE ~ "others"
+)
+
+#recode smoking status
+muda$smoker <- case_when(
+  muda$SMQ020 == 1 ~ "yes",
+  muda$SMQ020 == 2 ~ "no",
+  TRUE ~ "hehe"
+)
+
+#label those who report "don't know" or "refuse to answer" for smoking status as missing value
+muda$smoker <- ifelse(muda$smoker == "hehe", NA, muda$smoker)
+
+#drop variables we don't need
+muda <- select(muda, -c(2:10))
+
+#drop those who report "don't know" for education level
+muda <- filter(muda, education != "don't know")
+
+#drop observations with any missing value
+muda <- na.omit(muda)
+
+###check the format of each variable
+sapply(muda, class)
+```
+
+
+### Descriptive Statistics
+```{r}
+
+exp<-filter(muda,muda$TotalSHSexposure==1)
+nexp<-filter(muda,muda$TotalSHSexposure==0)
+
+#count gender#
+summary(exp$gender)
+summary(nexp$gender)
+
+#age summary# 
+summary(exp$age)
+sd(exp$age)
+
+summary(nexp$age)
+sd(nexp$age)
+
+#race summary#
+summary(exp$race)
+summary(nexp$race)
+
+##Marital summary#
+summary(exp$marriage)
+summary(nexp$marriage)
+
+#income summary#
+
+summary(exp$family_income)
+sd(exp$family_income,na.rm = T)
+
+summary(nexp$family_income)
+sd(nexp$family_income,na.rm = T)
+
+#household people#
+summary(exp$household_number)
+sd(exp$household_number)
+
+summary(nexp$household_number)
+sd(nexp$household_number)
+
+#education#
+summary(exp$education)
+summary(nexp$education)
+
+#smoker#
+summary(exp$smoker)
+summary(nexp$smoker)
+
+```
+
+### Data Analysis
+```{r}
+
+#calculate crude OR for education, age and marital status using univariate logistic regression
+summary(
+  ora1 <- glm(data = muda, TotalSHSexposure ~ education,
+              family = "binomial")
+)
+
+#print OR
+print(exp(cbind(OR = coef(ora1), confint(ora1))))
+
+#Logistic regression for age
+summary(
+  ora2 <- glm(data = muda, TotalSHSexposure ~ age,
+              family = "binomial")
+)
+
+#print OR
+print(exp(cbind(OR = coef(ora2), confint(ora2))))
+
+#logistic regression formarital status
+summary(
+  ora3 <- glm(data = muda, TotalSHSexposure ~ marriage,
+              family = "binomial")
+)
+
+#print OR
+print(exp(cbind(OR = coef(ora3), confint(ora3))))
+
+#######################################################
+#calculate adjusted OR for education, age and marital status using logistic regression
+#education
+d1 <- glm(data = muda, 
+          TotalSHSexposure ~ education + gender + race + family_income + smoker, 
+          family="binomial")
+summary(d1)
+print(exp(cbind(OR = coef(d1), confint(d1))))
+
+#marital status
+d2 <- glm(data = muda, 
+          TotalSHSexposure ~ marriage + household_number, 
+          family="binomial")
+summary(d1)
+print(exp(cbind(OR = coef(d2), confint(d2))))
+```
+
+
+
+
+
+
+
+
+
+
